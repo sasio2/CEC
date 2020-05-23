@@ -97,7 +97,7 @@ void CEC_Device::Run()
 		break;
 
 	case CEC_RCV_STARTBIT1:
-		// We're waiting for the rising edge of the start bit
+		// We received the rising edge of the start bit
 		if (difftime >= (STARTBIT_TIME_LOW - BIT_TIME_LOW_MARGIN) &&
 		    difftime <= (STARTBIT_TIME_LOW + BIT_TIME_LOW_MARGIN)) {
 			// We now need to wait for the next falling edge
@@ -107,12 +107,12 @@ void CEC_Device::Run()
 		// Illegal state.  Go back to CEC_IDLE to wait for a valid start bit or start pending transmit
 		_state = CEC_IDLE;
 		break;
-		
+
 	case CEC_RCV_STARTBIT2:
-		// This should be the falling edge of the start bit
-		if (difftime >= (STARTBIT_TIME - BIT_TIME_LOW_MARGIN)) {
-			// We've fully received the start bit.  Begin receiving
-			// a data bit
+		// This should be the falling edge after the start bit
+		if (difftime >= (STARTBIT_TIME - BIT_TIME_MARGIN) &&
+		    difftime <= (STARTBIT_TIME + BIT_TIME_MARGIN)) {
+			// We've fully received the start bit.  Begin receiving a data bit
 			_state = CEC_RCV_DATABIT1;
 			_bitStartTime = time;
 			break;
@@ -120,7 +120,7 @@ void CEC_Device::Run()
 		// Illegal state.  Go back to CEC_IDLE to wait for a valid start bit or start pending transmit
 		_state = CEC_IDLE;
 		break;
-		
+
 	case CEC_RCV_DATABIT1:
 	case CEC_RCV_EOM1:
 	case CEC_RCV_ACK1:
@@ -162,7 +162,7 @@ void CEC_Device::Run()
 	case CEC_RCV_DATABIT2:
 	case CEC_RCV_EOM2:
 	case CEC_RCV_ACK2:
-		// We've received the falling edge of the data/eom/ack bit
+		// We've received the falling edge after the data/eom/ack bit
 		_bitStartTime = time;
 		if (difftime >= (BIT_TIME - BIT_TIME_MARGIN)) {
 			if (_state == CEC_RCV_EOM2) {
