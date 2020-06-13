@@ -48,8 +48,6 @@ void MyCEC_Device::SetLineState(bool state)
 		digitalWrite(CEC_GPIO, LOW);
 		pinMode(CEC_GPIO, OUTPUT);
 	}
-	// give enough time for the line to settle before sampling it
-	delayMicroseconds(50);
 }
 
 void MyCEC_Device::OnReady(int logicalAddress)

@@ -8,6 +8,7 @@ CEC_Device::CEC_Device() :
 	_receiveBufferBits(0),
 	_transmitBufferBytes(0),
 	_amLastTransmittor(false),
+	_lineSetTime(0),
 	_bitStartTime(0),
 	_waitTime(0)
 {
@@ -51,9 +52,14 @@ void CEC_Device::Initialize(int physicalAddress, CEC_DEVICE_TYPE type, bool prom
 
 void CEC_Device::Run()
 {
-	bool currentLineState = LineState();
 	unsigned long time = micros();
-	unsigned long difftime = time - _bitStartTime;
+	unsigned long difftime = time - _lineSetTime;
+	if (difftime < (_lastLineState ? CEC_MAX_RISE_TIME : CEC_MAX_FALL_TIME))
+		// give enough time for the line to settle before sampling it
+		return;
+
+	bool currentLineState = LineState();
+	difftime = time - _bitStartTime;
 	if (currentLineState == _lastLineState && _state != CEC_IDLE &&
 	    (_waitTime == (unsigned int)-1 || _waitTime > difftime))
 		// No line transition and wait for external event, or wait time not elapsed; nothing to do
@@ -178,8 +184,11 @@ void CEC_Device::Run()
 
 				// Go low for ack/nak
 				if ((_follower && _ack) || (_broadcast && !_ack)) {
-					if (!_monitorMode)
+					if (!_monitorMode) {
 						SetLineState(0);
+						currentLineState = 0;
+						_lineSetTime = time;
+					}
 					_state = CEC_RCV_ACK_SENT;
 					_waitTime = BIT_TIME_LOW_0;
 				} else if (!_ack || (!_promiscuous && !_broadcast)) {
@@ -200,6 +209,8 @@ void CEC_Device::Run()
 			break;
 		}
 		SetLineState(0);
+		currentLineState = 0;
+		_lineSetTime = time;
 		_state = CEC_RCV_LINEERROR;
 		_waitTime = BIT_TIME_ERR;
 		break;
@@ -207,6 +218,8 @@ void CEC_Device::Run()
 	case CEC_RCV_ACK_SENT:
 		// We're done holding the line low...  release it
 		SetLineState(1);
+		currentLineState = 1;
+		_lineSetTime = time;
 		if (_eom || !_ack) {
 			// We're not going to receive anything more from the initiator (EOM has been received)
 			// or we've sent the NAK for the most recent bit. Therefore this message is all done.
@@ -221,12 +234,16 @@ void CEC_Device::Run()
 
 	case CEC_RCV_LINEERROR:
 		SetLineState(1);
+		currentLineState = 1;
+		_lineSetTime = time;
 		_state = CEC_IDLE;
 		break;
 
 	case CEC_XMIT_WAIT:
 		// We waited long enough, begin start bit
 		SetLineState(0);
+		currentLineState = 0;
+		_lineSetTime = time;
 		_bitStartTime = time;
 		_transmitBufferBitIdx = 0;
 		_xmitretry++;
@@ -241,6 +258,8 @@ void CEC_Device::Run()
 	case CEC_XMIT_EOM1:
 		// We finished the first half of the bit, send the rising edge
 		SetLineState(1);
+		currentLineState = 1;
+		_lineSetTime = time;
 		_waitTime = (_state == CEC_XMIT_STARTBIT1) ? STARTBIT_TIME : BIT_TIME;
 		_state = (CEC_STATE)(_state + 1);
 		break;
@@ -251,6 +270,8 @@ void CEC_Device::Run()
 	case CEC_XMIT_ACK2:
 		// We finished the second half of the previous bit, send the falling edge of the new bit
 		SetLineState(0);
+		currentLineState = 0;
+		_lineSetTime = time;
 		_bitStartTime = time;
 		if (_state == CEC_XMIT_DATABIT2 && (_transmitBufferBitIdx & 7) == 0) {
 			_state = CEC_XMIT_EOM1;
@@ -271,6 +292,8 @@ void CEC_Device::Run()
 	case CEC_XMIT_ACK1:
 		// We finished the first half of the ack bit, release the line
 		SetLineState(1); // Maybe follower pulls low for ACK
+		currentLineState = 1;
+		_lineSetTime = time;
 		_waitTime = BIT_TIME_SAMPLE;
 		_state = CEC_XMIT_ACK_TEST;
 		break;
@@ -327,7 +350,7 @@ void CEC_Device::Run()
 		_state = CEC_XMIT_ACK2;
 		break;
 	}
-	_lastLineState = LineState();
+	_lastLineState = currentLineState;
 }
 
 bool CEC_Device::Transmit(int sourceAddress, int targetAddress, const unsigned char* buffer, unsigned int count)

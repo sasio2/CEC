@@ -112,8 +112,14 @@ private:
 		BIT_TIME_MARGIN     =  450, // 0.35ms plus some additional margin since we poll the bitline
 	};
 
+	enum {
+		CEC_MAX_RISE_TIME   = 250, // 250us
+		CEC_MAX_FALL_TIME   =  50, //  50us
+	};
+
 	bool _lastLineState;
 	unsigned long _bitStartTime;
+	unsigned long _lineSetTime;
 	unsigned int _waitTime;
 
 	int _xmitretry;
