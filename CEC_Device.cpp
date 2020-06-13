@@ -60,10 +60,8 @@ void CEC_Device::Run()
 
 	bool currentLineState = LineState();
 	difftime = time - _bitStartTime;
-	if (currentLineState == _lastLineState && _state != CEC_IDLE &&
-	    (_waitTime == (unsigned int)-1 || _waitTime > difftime))
-		// No line transition and wait for external event, or wait time not elapsed; nothing to do
-		// In IDLE state we need to check for pending transmit, though
+	if (currentLineState == _lastLineState && _waitTime > difftime)
+		// No line transition and wait time not elapsed; nothing to do
 		return;
 
 	if (currentLineState != _lastLineState &&
@@ -74,7 +72,7 @@ void CEC_Device::Run()
 		_state = CEC_IDLE;
 
 	bool bit;
-	_waitTime = (unsigned int)-1;	// INFINITE by default; (== wait until an external event has occurred)
+	_waitTime = 0;
 	switch (_state) {
 	case CEC_IDLE:
 		// If a high to low transition occurs, this must be the beginning of a start bit
@@ -85,6 +83,7 @@ void CEC_Device::Run()
 			_follower = false;
 			_broadcast = false;
 			_amLastTransmittor = false;
+			_waitTime = STARTBIT_TIMEOUT;
 			_state = CEC_RCV_STARTBIT1;
 		} else if (_transmitBufferBytes)
 			// Transmit pending
@@ -107,6 +106,7 @@ void CEC_Device::Run()
 		if (difftime >= (STARTBIT_TIME_LOW - BIT_TIME_LOW_MARGIN) &&
 		    difftime <= (STARTBIT_TIME_LOW + BIT_TIME_LOW_MARGIN)) {
 			// We now need to wait for the next falling edge
+			_waitTime = STARTBIT_TIMEOUT;
 			_state = CEC_RCV_STARTBIT2;
 			break;
 		}
@@ -119,8 +119,9 @@ void CEC_Device::Run()
 		if (difftime >= (STARTBIT_TIME - BIT_TIME_MARGIN) &&
 		    difftime <= (STARTBIT_TIME + BIT_TIME_MARGIN)) {
 			// We've fully received the start bit.  Begin receiving a data bit
-			_state = CEC_RCV_DATABIT1;
 			_bitStartTime = time;
+			_waitTime = BIT_TIMEOUT;
+			_state = CEC_RCV_DATABIT1;
 			break;
 		}
 		// Illegal state.  Go back to CEC_IDLE to wait for a valid start bit or start pending transmit
@@ -162,16 +163,23 @@ void CEC_Device::Run()
 				_receiveBufferBits++;
 			}
 		}
+		_waitTime = BIT_TIMEOUT;
 		_state = (CEC_STATE)(_state + 1);
 		break;
 
 	case CEC_RCV_DATABIT2:
 	case CEC_RCV_EOM2:
 	case CEC_RCV_ACK2:
+		if (difftime > (BIT_TIME + BIT_TIME_MARGIN)) {
+			// Illegal state.  Timeout?
+			_state = CEC_IDLE;
+			break;
+		}
 		// We've received the falling edge after the data/eom/ack bit
 		_bitStartTime = time;
 		if (difftime >= (BIT_TIME - BIT_TIME_MARGIN)) {
 			if (_state == CEC_RCV_EOM2) {
+				_waitTime = BIT_TIMEOUT;
 				_state = CEC_RCV_ACK1;
 
 				// Check to see if the frame is addressed to us
@@ -189,8 +197,8 @@ void CEC_Device::Run()
 						currentLineState = 0;
 						_lineSetTime = time;
 					}
-					_state = CEC_RCV_ACK_SENT;
 					_waitTime = BIT_TIME_LOW_0;
+					_state = CEC_RCV_ACK_SENT;
 				} else if (!_ack || (!_promiscuous && !_broadcast)) {
 					// It's broken or not addressed to us.
 					// Go back to CEC_IDLE to wait for a valid start bit or start pending transmit
@@ -199,6 +207,7 @@ void CEC_Device::Run()
 				break;
 			}
 			// Receive another bit
+			_waitTime = BIT_TIMEOUT;
 			_state = (_state == CEC_RCV_DATABIT2 &&
 			          (_receiveBufferBits & 7) == 0) ? CEC_RCV_EOM1 : CEC_RCV_DATABIT1;
 			break;
@@ -211,8 +220,8 @@ void CEC_Device::Run()
 		SetLineState(0);
 		currentLineState = 0;
 		_lineSetTime = time;
-		_state = CEC_RCV_LINEERROR;
 		_waitTime = BIT_TIME_ERR;
+		_state = CEC_RCV_LINEERROR;
 		break;
 
 	case CEC_RCV_ACK_SENT:
@@ -229,6 +238,7 @@ void CEC_Device::Run()
 			break;
 		}
 		// We need to wait for the falling edge of the ACK to finish processing this ack
+		_waitTime = BIT_TIMEOUT;
 		_state = CEC_RCV_ACK2;
 		break;
 
@@ -338,11 +348,10 @@ void CEC_Device::Run()
 			break;
 		}
 		// We have more to transmit, so do so...
+		_waitTime = BIT_TIME;
 		_state = CEC_XMIT_ACK_WAIT;  // wait for line going high
-		if (currentLineState != 0) { // already high, no ACK from follower
-			_waitTime = BIT_TIME;
+		if (currentLineState != 0)   // already high, no ACK from follower
 			_state = CEC_XMIT_ACK2;
-		}
 		break;
 	case CEC_XMIT_ACK_WAIT:
 		// We received the rising edge of ack from follower
