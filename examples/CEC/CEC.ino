@@ -2,13 +2,13 @@
 
 // NodeMCU ESP8266 Pins   bootstrap
 // D0  GPIO16  DeepSleep  blue LED connected to 3V3
-// D1  GPIO5
-// D2  GPIO4
+// D1  GPIO5              <high-Z>
+// D2  GPIO4              <high-Z>
 // D3  GPIO0              pull-up (SPI boot) / pull-down (UART boot)
 // D4  GPIO2   TxD1       pull-up, blue LED on ESP12E module
-// D5  GPIO14
-// D6  GPIO12
-// D7  GPIO13
+// D5  GPIO14             <weak pull-up>
+// D6  GPIO12             <weak pull-up>
+// D7  GPIO13             <weak pull-up>
 // D8  GPIO15             pull-down
 // D9  GPIO3   RxD0
 // D10 GPIO1   TxD0
