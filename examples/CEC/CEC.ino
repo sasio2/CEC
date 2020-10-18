@@ -78,7 +78,7 @@ void MyCEC_Device::OnReceiveComplete(unsigned char* buffer, int count, bool ack)
 		return;
 
 	// No command received?
-	if (count < 1)
+	if (count < 2)
 		return;
 
 	switch (buffer[1]) {
